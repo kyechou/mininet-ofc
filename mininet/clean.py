@@ -110,6 +110,10 @@ class Cleanup( object ):
         killprocs( '.ssh/mn')
         sh( 'rm -f ~/.ssh/mn/*' )
 
+        info( "*** Shutting down ofc-servers\n" )
+        killprocs( 'ofconfig' )
+        killprocs( 'ofc-server' )
+
         # Call any additional cleanup code if necessary
         for callback in cls.callbacks:
             callback()

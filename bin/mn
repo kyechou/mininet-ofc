@@ -247,6 +247,9 @@ class MininetRunner( object ):
                          type='string',
                          help='read custom classes or params from .py file(s)'
                          )
+        opts.add_option( '--startup', '-s', type='string', default='',
+                         help='startup data file for ofc-server'
+                         )
         opts.add_option( '--test', default=[], action='append',
                          dest='test', help='|'.join( TESTS.keys() ) )
         opts.add_option( '--xterms', '-x', action='store_true',
@@ -385,7 +388,7 @@ class MininetRunner( object ):
                   ipBase=opts.ipbase, inNamespace=opts.innamespace,
                   xterms=opts.xterms, autoSetMacs=opts.mac,
                   autoStaticArp=opts.arp, autoPinCpus=opts.pin,
-                  listenPort=opts.listenport )
+                  listenPort=opts.listenport, startup=opts.startup )
 
         if opts.ensure_value( 'nat', False ):
             with open( '/etc/resolv.conf' ) as f:

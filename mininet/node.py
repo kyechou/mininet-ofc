@@ -57,7 +57,8 @@ import pty
 import re
 import signal
 import select
-from subprocess import Popen, PIPE
+import tempfile
+from subprocess import Popen, PIPE, DEVNULL
 from time import sleep
 
 from mininet.log import info, error, warn, debug
@@ -1054,7 +1055,8 @@ class OVSSwitch( Switch ):
 
     def __init__( self, name, failMode='secure', datapath='kernel',
                   inband=False, protocols=None,
-                  reconnectms=1000, stp=False, batch=False, **params ):
+                  reconnectms=1000, stp=False, batch=False, startup_file=None,
+                  **params ):
         """name: name for switch
            failMode: controller loss behavior (secure|standalone)
            datapath: userspace or kernel mode (kernel|user)
@@ -1073,6 +1075,7 @@ class OVSSwitch( Switch ):
         self.stp = stp
         self._uuids = []  # controller UUIDs
         self.batch = batch
+        self.startup_file = startup_file
         self.commands = []  # saved commands for batch startup
 
     @classmethod
@@ -1207,12 +1210,40 @@ class OVSSwitch( Switch ):
                           for name, target in clist )
         # Controller ID list
         cids = ','.join( '@%s' % name for name, _target in clist )
-        # Try to delete any existing bridges with the same name
-        if not self.isOldOVS():
-            cargs += ' -- --if-exists del-br %s' % self
-        # One ovs-vsctl command to rule them all!
+
+        if self.startup_file:   # Use OF-CONFIG server
+            # Try to delete any existing bridges with the same name
+            if not self.isOldOVS():
+                self.cmd( 'ovs-vsctl -- --if-exists del-br %s' % self )
+            port = str(7000 + int(self.dpid))
+            startup = '_' + str(self) + '.xml'
+            with open(self.startup_file, 'r') as in_f:
+                with open(startup, 'w') as out_f:
+                    content = in_f.read()
+                    content = content.replace('NAME', str(self))
+                    content = content.replace('DPID',
+                            self.dpid[ 0: 2] + ':' +
+                            self.dpid[ 2: 4] + ':' +
+                            self.dpid[ 4: 6] + ':' +
+                            self.dpid[ 6: 8] + ':' +
+                            self.dpid[ 8:10] + ':' +
+                            self.dpid[10:12] + ':' +
+                            self.dpid[12:14] + ':' +
+                            self.dpid[14:16])
+                    out_f.write(content)
+            # Create the switch node through ofc-server
+            ofc_cmd = ['ofc-server', '-f', '-s', startup, '-p', port]
+            Popen(ofc_cmd, stdout=DEVNULL, stderr=DEVNULL)
+            sleep(0.5)
+        else:                   # Create switch with ovs-vsctl
+            # Try to delete any existing bridges with the same name
+            if not self.isOldOVS():
+                self.vsctl( ' -- --if-exists del-br %s' % self )
+            # Create the switch node through ovs-vsctl
+            self.vsctl( ' -- add-br %s' % self )
+
+        # Create controller entries, set up bridge options and interfaces
         self.vsctl( cargs +
-                    ' -- add-br %s' % self +
                     ' -- set bridge %s controller=[%s]' % ( self, cids  ) +
                     self.bridgeOpts() +
                     intfs )
@@ -1261,6 +1292,9 @@ class OVSSwitch( Switch ):
         if self.datapath == 'user':
             self.cmd( 'ip link del', self )
         super( OVSSwitch, self ).stop( deleteIntfs )
+        if self.startup_file:
+            startup = '_' + str(self) + '.xml'
+            os.remove(startup)
 
     @classmethod
     def batchShutdown( cls, switches, run=errRun ):
@@ -1276,6 +1310,9 @@ class OVSSwitch( Switch ):
         run( 'kill -HUP ' + pids )
         for switch in switches:
             switch.terminate()
+            if switch.startup_file:
+                startup = '_' + str(switch) + '.xml'
+                os.remove(startup)
         return switches
 
 

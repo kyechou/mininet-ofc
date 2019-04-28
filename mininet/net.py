@@ -118,7 +118,7 @@ class Mininet( object ):
                   build=True, xterms=False, cleanup=False, ipBase='10.0.0.0/8',
                   inNamespace=False,
                   autoSetMacs=False, autoStaticArp=False, autoPinCpus=False,
-                  listenPort=None, waitConnected=False ):
+                  listenPort=None, waitConnected=False, startup=None ):
         """Create Mininet object.
            topo: Topo (topology) object or None
            switch: default Switch class
@@ -157,6 +157,7 @@ class Mininet( object ):
         self.nextCore = 0  # next core for pinning hosts to CPUs
         self.listenPort = listenPort
         self.waitConn = waitConnected
+        self.startup = startup
 
         self.hosts = []
         self.switches = []
@@ -257,7 +258,10 @@ class Mininet( object ):
         defaults.update( params )
         if not cls:
             cls = self.switch
-        sw = cls( name, **defaults )
+        if self.startup:
+            sw = cls( name, startup_file=self.startup, **defaults )
+        else:
+            sw = cls( name, **defaults )
         if not self.inNamespace and self.listenPort:
             self.listenPort += 1
         self.switches.append( sw )
@@ -589,6 +593,10 @@ class Mininet( object ):
                 switch.stop()
             switch.terminate()
         info( '\n' )
+        info( '*** Stopping ofc-servers\n' )
+        from mininet.clean import killprocs
+        killprocs( 'ofconfig' )
+        killprocs( 'ofc-server' )
         info( '*** Stopping %i hosts\n' % len( self.hosts ) )
         for host in self.hosts:
             info( host.name + ' ' )
